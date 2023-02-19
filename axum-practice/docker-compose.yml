@@ -1,0 +1,14 @@
+version: "3"
+
+
+services:
+  pg:
+    image: "postgres:15.2"
+    environment:
+    - POSTGRES_PASSWORD=admin
+    ports:
+    - 5432:5432
+
+
+volumes:
+  pg:
