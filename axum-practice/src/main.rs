@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use axum::extract::Path;
 use axum::http::StatusCode;
 use axum::{
     extract::{Json, State},
@@ -22,7 +23,9 @@ async fn main() {
     let app = Router::new()
         .route("/", any(get_method_handler))
         .route("/user", post(create_user))
-        .with_state(user_db);
+        .with_state(Arc::clone(&user_db))
+        .route("/user/:user_id", get(get_user_by_id))
+        .with_state(Arc::clone(&user_db));
 
     axum::Server::bind(&"127.0.0.1:3001".parse().unwrap())
         .serve(app.into_make_service())
@@ -30,12 +33,30 @@ async fn main() {
         .unwrap();
 }
 
-// async fn create_user(Json(user): Json<dto::CreateUserRequest>, State(user_db): State<UserDb>) {
+async fn get_user_by_id(
+    State(user_db): State<UserDb>,
+    Path(user_id): Path<i32>,
+) -> (StatusCode, Json<Value>) {
+    if user_id < 1 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "err": "Invalid user_id"})),
+        );
+    }
+
+    let lock = user_db.lock().unwrap();
+
+    if let Some(user) = lock.get(&user_id) {
+        return (StatusCode::OK, Json(json!({ "result": user })));
+    }
+    (StatusCode::NOT_FOUND, Json(json!({})))
+}
+
 #[axum_macros::debug_handler]
 async fn create_user(
     State(user_db): State<UserDb>,
     Json(create_user_request): Json<dto::CreateUserRequest>,
-) -> Json<Value> {
+) -> (StatusCode, Json<Value>) {
     println!("{:?}", create_user_request);
     let mut lock = user_db.lock().unwrap();
 
@@ -45,11 +66,10 @@ async fn create_user(
     });
 
     if let true = user_with_name_already_exists {
-        return Json(json!({ "err" : "user with same name already exists"}));
-        // return (
-        // StatusCode::OK,
-        // Some(Json(json!({ "err" : "user with same name already exists"}))),
-        // );
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "err" : "user with same name already exists"})),
+        );
     }
 
     let new_id = match lock.values().map(|u| u.id).max() {
@@ -63,7 +83,7 @@ async fn create_user(
     };
 
     lock.insert(new_id, user);
-    return Json(json!({"err": null, "result": new_id}));
+    return (StatusCode::OK, Json(json!({"err": null, "result": new_id})));
 }
 
 async fn get_method_handler(method: Method) -> String {
