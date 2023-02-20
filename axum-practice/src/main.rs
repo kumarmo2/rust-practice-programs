@@ -1,8 +1,5 @@
-use std::collections::HashMap;
 use std::sync::Arc;
-// use std::sync::Mutex;
 
-use axum::extract::rejection::JsonRejection;
 use axum::extract::Path;
 use axum::http::StatusCode;
 use axum::{
@@ -17,19 +14,18 @@ use sqlx::postgres::Postgres;
 use sqlx::Row;
 use tokio::sync::Mutex;
 mod dto;
-use dto::User;
-
-type Db = Arc<Mutex<Pool<Postgres>>>;
 
 #[derive(Clone)]
-struct AppState {
+struct GlobalState {
     pub(crate) db: Pool<Postgres>,
 }
+type AppState = Arc<Mutex<GlobalState>>;
 
 #[tokio::main]
 async fn main() {
     println!("Hello, world!");
 
+    // TODO: Add logging/tracing.
     // TODO: instead of panicing, return some Result Type from the main.
 
     let db_pool: Pool<Postgres> =
@@ -40,8 +36,8 @@ async fn main() {
                 panic!()
             }
         };
-    let state = AppState { db: db_pool };
-    let app_state: Arc<Mutex<AppState>> = Arc::new(Mutex::new(state));
+    let state = GlobalState { db: db_pool };
+    let app_state: AppState = Arc::new(Mutex::new(state));
 
     let app = Router::new()
         .route("/", any(get_method_handler))
@@ -58,7 +54,7 @@ async fn main() {
 
 #[axum_macros::debug_handler]
 async fn get_user_by_id(
-    State(state): State<Arc<Mutex<AppState>>>,
+    State(state): State<AppState>,
     Path(user_id): Path<i32>,
 ) -> (StatusCode, Json<Value>) {
     if user_id < 1 {
@@ -92,14 +88,14 @@ async fn get_user_by_id(
 
 #[axum_macros::debug_handler]
 async fn create_user(
-    State(state): State<Arc<Mutex<AppState>>>,
+    State(state): State<AppState>,
     Json(create_user_request): Json<dto::CreateUserRequest>,
 ) -> (StatusCode, Json<Value>) {
     println!("{:?}", create_user_request);
     let mut lock = state.lock().await;
 
     let option_user = match sqlx::query_as!(
-        User,
+        dto::User,
         "select id, name from users.users where name = $1",
         &create_user_request.name
     )
