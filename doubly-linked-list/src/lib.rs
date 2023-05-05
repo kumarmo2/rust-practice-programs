@@ -1,4 +1,4 @@
-#![allow(dead_code, unused_variables)]
+// #![allow(dead_code, unused_variables)]
 
 type Pointer<T> = Option<Rc<RefCell<Node<T>>>>;
 use std::{cell::RefCell, marker::PhantomData, ops::Deref, rc::Rc};
@@ -28,23 +28,45 @@ pub struct DoublyLinkedList<T> {
 }
 
 pub struct Iter<'a, T> {
-    current: Pointer<T>,
+    front: Pointer<T>,
+    back: Pointer<T>,
     lifetime: PhantomData<&'a T>,
 }
 
 pub struct IterMut<'a, T> {
-    current: Pointer<T>,
+    front: Pointer<T>,
     lifetime: PhantomData<&'a T>,
+}
+
+fn ptr_eq<T>(a: *mut T, b: *mut T) -> bool {
+    a == b
 }
 
 impl<'a, T> Iterator for IterMut<'a, T> {
     type Item = &'a mut T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.current.clone().map(|node| {
-            self.current = node.clone().deref().borrow().next.clone();
+        self.front.clone().map(|node| {
+            self.front = node.clone().deref().borrow().next.clone();
 
             unsafe { &mut (*node.as_ptr()).val }
+        })
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.back.clone().map(|node| {
+            let back_ptr = node.clone().deref().as_ptr();
+            let front_ptr = self.front.clone().unwrap().deref().as_ptr();
+
+            if ptr_eq(front_ptr, back_ptr) {
+                self.front = None;
+                self.back = None;
+            } else {
+                self.back = node.clone().deref().borrow().prev.clone();
+            }
+            unsafe { &(*node.as_ptr()).val }
         })
     }
 }
@@ -53,8 +75,16 @@ impl<'a, T> Iterator for Iter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.current.clone().map(|node| {
-            self.current = node.clone().deref().borrow().next.clone();
+        self.front.clone().map(|node| {
+            let front_ptr = node.clone().deref().as_ptr();
+            let end_ptr = self.back.clone().unwrap().deref().as_ptr();
+
+            if ptr_eq(front_ptr, end_ptr) {
+                self.front = None;
+                self.back = None;
+            } else {
+                self.front = node.clone().deref().borrow().next.clone();
+            }
             unsafe { &(*node.as_ptr()).val }
         })
     }
@@ -67,13 +97,14 @@ impl<T> DoublyLinkedList<T> {
 
     pub fn iter<'a>(&'a self) -> Iter<'a, T> {
         Iter {
-            current: self.ends.as_ref().map(|ends| ends.start.clone()),
+            front: self.ends.as_ref().map(|ends| ends.start.clone()),
+            back: self.ends.as_ref().map(|ends| ends.end.clone()),
             lifetime: PhantomData::default(),
         }
     }
     pub fn iter_mut<'a>(&'a self) -> IterMut<'a, T> {
         IterMut {
-            current: self.ends.as_ref().map(|ends| ends.start.clone()),
+            front: self.ends.as_ref().map(|ends| ends.start.clone()),
             lifetime: PhantomData::default(),
         }
     }
@@ -136,5 +167,45 @@ mod tests {
         assert_eq!(26, *iterator.next().unwrap());
         assert_eq!(27, *iterator.next().unwrap());
         assert_eq!(None, iterator.next());
+    }
+
+    #[test]
+    fn one_item_double_iter_works() {
+        let mut dll = DoublyLinkedList::new();
+        dll.add_last(5);
+        let mut iterator = dll.iter();
+        assert_eq!(5, *iterator.next_back().unwrap());
+        assert_eq!(None, iterator.next());
+    }
+    #[test]
+    fn two_item_double_iter_works() {
+        let mut dll = DoublyLinkedList::new();
+        dll.add_last(5);
+        dll.add_last(6);
+        let mut iterator = dll.iter();
+        assert_eq!(6, *iterator.next_back().unwrap());
+        assert_eq!(5, *iterator.next().unwrap());
+        assert_eq!(None, iterator.next_back());
+    }
+
+    #[test]
+    fn double_iter_works() {
+        let mut dll = DoublyLinkedList::new();
+        dll.add_last(1);
+        dll.add_last(2);
+        dll.add_last(3);
+        dll.add_last(4);
+        dll.add_last(5);
+        dll.add_last(6);
+
+        let mut iter = dll.iter();
+        assert_eq!(Some(&1), iter.next());
+        assert_eq!(Some(&6), iter.next_back());
+        assert_eq!(Some(&5), iter.next_back());
+        assert_eq!(Some(&2), iter.next());
+        assert_eq!(Some(&3), iter.next());
+        assert_eq!(Some(&4), iter.next());
+        assert_eq!(None, iter.next());
+        assert_eq!(None, iter.next_back());
     }
 }
