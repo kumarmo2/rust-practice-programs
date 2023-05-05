@@ -32,6 +32,23 @@ pub struct Iter<'a, T> {
     lifetime: PhantomData<&'a T>,
 }
 
+pub struct IterMut<'a, T> {
+    current: Pointer<T>,
+    lifetime: PhantomData<&'a T>,
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.current.clone().map(|node| {
+            self.current = node.clone().deref().borrow().next.clone();
+
+            unsafe { &mut (*node.as_ptr()).val }
+        })
+    }
+}
+
 impl<'a, T> Iterator for Iter<'a, T> {
     type Item = &'a T;
 
@@ -50,6 +67,12 @@ impl<T> DoublyLinkedList<T> {
 
     pub fn iter<'a>(&'a self) -> Iter<'a, T> {
         Iter {
+            current: self.ends.as_ref().map(|ends| ends.start.clone()),
+            lifetime: PhantomData::default(),
+        }
+    }
+    pub fn iter_mut<'a>(&'a self) -> IterMut<'a, T> {
+        IterMut {
             current: self.ends.as_ref().map(|ends| ends.start.clone()),
             lifetime: PhantomData::default(),
         }
@@ -95,6 +118,23 @@ mod tests {
         assert_eq!(5, *iterator.next().unwrap());
         assert_eq!(6, *iterator.next().unwrap());
         assert_eq!(7, *iterator.next().unwrap());
+        assert_eq!(None, iterator.next());
+    }
+    #[test]
+    fn mut_iter_works() {
+        let mut dll: DoublyLinkedList<i32> = DoublyLinkedList::new();
+        dll.add_last(5);
+        dll.add_last(6);
+        dll.add_last(7);
+
+        for item in dll.iter_mut() {
+            *item = *item + 20;
+        }
+
+        let mut iterator = dll.iter();
+        assert_eq!(25, *iterator.next().unwrap());
+        assert_eq!(26, *iterator.next().unwrap());
+        assert_eq!(27, *iterator.next().unwrap());
         assert_eq!(None, iterator.next());
     }
 }
