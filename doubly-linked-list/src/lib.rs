@@ -19,8 +19,8 @@ impl<T> Node<T> {
 }
 
 struct Ends<T> {
-    start: Rc<RefCell<Node<T>>>,
-    end: Rc<RefCell<Node<T>>>,
+    front: Rc<RefCell<Node<T>>>,
+    back: Rc<RefCell<Node<T>>>,
 }
 
 pub struct DoublyLinkedList<T> {
@@ -35,11 +35,28 @@ pub struct Iter<'a, T> {
 
 pub struct IterMut<'a, T> {
     front: Pointer<T>,
+    back: Pointer<T>,
     lifetime: PhantomData<&'a T>,
 }
 
 fn ptr_eq<T>(a: *mut T, b: *mut T) -> bool {
     a == b
+}
+impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.back.clone().map(|node| {
+            let back_ptr = node.clone().deref().as_ptr();
+            let front_ptr = self.front.clone().unwrap().deref().as_ptr();
+
+            if ptr_eq(front_ptr, back_ptr) {
+                self.front = None;
+                self.back = None;
+            } else {
+                self.back = node.clone().deref().borrow().prev.clone();
+            }
+            unsafe { &mut (*node.as_ptr()).val }
+        })
+    }
 }
 
 impl<'a, T> Iterator for IterMut<'a, T> {
@@ -47,7 +64,15 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.front.clone().map(|node| {
-            self.front = node.clone().deref().borrow().next.clone();
+            let front_ptr = node.clone().deref().as_ptr();
+            let end_ptr = self.back.clone().unwrap().deref().as_ptr();
+
+            if ptr_eq(front_ptr, end_ptr) {
+                self.front = None;
+                self.back = None;
+            } else {
+                self.front = node.clone().deref().borrow().next.clone();
+            }
 
             unsafe { &mut (*node.as_ptr()).val }
         })
@@ -97,14 +122,15 @@ impl<T> DoublyLinkedList<T> {
 
     pub fn iter<'a>(&'a self) -> Iter<'a, T> {
         Iter {
-            front: self.ends.as_ref().map(|ends| ends.start.clone()),
-            back: self.ends.as_ref().map(|ends| ends.end.clone()),
+            front: self.ends.as_ref().map(|ends| ends.front.clone()),
+            back: self.ends.as_ref().map(|ends| ends.back.clone()),
             lifetime: PhantomData::default(),
         }
     }
     pub fn iter_mut<'a>(&'a self) -> IterMut<'a, T> {
         IterMut {
-            front: self.ends.as_ref().map(|ends| ends.start.clone()),
+            front: self.ends.as_ref().map(|ends| ends.front.clone()),
+            back: self.ends.as_ref().map(|ends| ends.back.clone()),
             lifetime: PhantomData::default(),
         }
     }
@@ -113,16 +139,16 @@ impl<T> DoublyLinkedList<T> {
         let node = Rc::new(RefCell::new(Node::new(val)));
         if self.ends.is_none() {
             self.ends = Some(Ends {
-                start: node.clone(),
-                end: node.clone(),
+                front: node.clone(),
+                back: node.clone(),
             });
             return;
         }
 
-        let curr_end = self.ends.as_mut().unwrap().end.clone();
+        let curr_end = self.ends.as_mut().unwrap().back.clone();
         curr_end.borrow_mut().next = Some(node.clone());
         node.borrow_mut().prev = Some(curr_end);
-        self.ends.as_mut().unwrap().end = node;
+        self.ends.as_mut().unwrap().back = node;
     }
 }
 
@@ -167,6 +193,49 @@ mod tests {
         assert_eq!(26, *iterator.next().unwrap());
         assert_eq!(27, *iterator.next().unwrap());
         assert_eq!(None, iterator.next());
+    }
+
+    #[test]
+    fn one_item_double_iter_mut_works() {
+        let mut dll = DoublyLinkedList::new();
+        dll.add_last(5);
+
+        let mut iter = dll.iter_mut();
+
+        let val = iter.next_back().unwrap();
+        *val = *val + 2;
+
+        assert_eq!(None, iter.next());
+
+        let mut iter = dll.iter();
+        assert_eq!(7, *iter.next().unwrap());
+        assert_eq!(None, iter.next());
+    }
+    #[test]
+    fn multiple_items_double_iter_mut_works() {
+        let mut dll = DoublyLinkedList::new();
+        dll.add_last(5);
+        dll.add_last(13);
+        dll.add_last(19);
+
+        let mut iter = dll.iter_mut();
+
+        let val = iter.next_back().unwrap();
+        *val = *val + 2;
+
+        let val = iter.next().unwrap();
+        *val = *val + 9;
+
+        let val = iter.next_back().unwrap();
+        *val = *val + 4;
+
+        assert_eq!(None, iter.next());
+
+        let mut iter = dll.iter();
+        assert_eq!(14, *iter.next().unwrap());
+        assert_eq!(21, *iter.next_back().unwrap());
+        assert_eq!(17, *iter.next_back().unwrap());
+        assert_eq!(None, iter.next());
     }
 
     #[test]
