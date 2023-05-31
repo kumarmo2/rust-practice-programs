@@ -30,13 +30,13 @@ pub struct DoublyLinkedList<T> {
 pub struct Iter<'a, T> {
     front: Pointer<T>,
     back: Pointer<T>,
-    lifetime: PhantomData<&'a T>,
+    _marker: PhantomData<&'a T>,
 }
 
 pub struct IterMut<'a, T> {
     front: Pointer<T>,
     back: Pointer<T>,
-    lifetime: PhantomData<&'a T>,
+    _marker: PhantomData<&'a T>,
 }
 
 fn ptr_eq<T>(a: *mut T, b: *mut T) -> bool {
@@ -124,14 +124,14 @@ impl<T> DoublyLinkedList<T> {
         Iter {
             front: self.ends.as_ref().map(|ends| ends.front.clone()),
             back: self.ends.as_ref().map(|ends| ends.back.clone()),
-            lifetime: PhantomData::default(),
+            _marker: PhantomData::default(),
         }
     }
     pub fn iter_mut<'a>(&'a self) -> IterMut<'a, T> {
         IterMut {
             front: self.ends.as_ref().map(|ends| ends.front.clone()),
             back: self.ends.as_ref().map(|ends| ends.back.clone()),
-            lifetime: PhantomData::default(),
+            _marker: PhantomData::default(),
         }
     }
 
