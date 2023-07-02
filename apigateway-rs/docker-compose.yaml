@@ -1,0 +1,19 @@
+version: "3"
+
+services:
+  lb: 
+    image: envoyproxy/envoy:v1.26-latest
+    ports:
+      - 3000:3000
+      - 9901:9901
+    volumes:
+      - ./envoy-config.yaml:/etc/envoy/envoy.yaml
+      - ./envoy_logs:/var/log
+    environment:
+      # this is done because there were some permission issues.
+      # learn more here: https://www.envoyproxy.io/docs/envoy/latest/start/docker#start-docker
+      - ENVOY_UID=0
+    extra_hosts:
+      # on linux, with this extra_hosts, the container won't be able to access host.docker.internal
+      # which the envoy docker config is accessing.
+      - "host.docker.internal:host-gateway"
