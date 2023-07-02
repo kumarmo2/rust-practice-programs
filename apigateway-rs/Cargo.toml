@@ -1,5 +1,7 @@
 [workspace]
 
 members = [
-"apis"
+"apis",
+"rls-grpc-service"
 ]
+
