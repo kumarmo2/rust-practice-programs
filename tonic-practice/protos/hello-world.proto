@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+import "google/protobuf/duration.proto";
+// import "envoy/config/core/v3/base.proto";
+import "udpa/annotations/status.proto";
+
+package helloservice;
+
+service MyService {
+  rpc SayHello(Hello) returns (HelloResponse) {}
+}
+message Hello {
+  string Name = 1;
+}
+
+message HelloResponse {
+  string Sentence = 1;
+}
+
+
