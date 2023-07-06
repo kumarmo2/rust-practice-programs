@@ -75,9 +75,9 @@ static_resources:
                         - source_cluster: {}
                         - generic_key:
                             descriptor_value: some_value
-                        # - request_headers:
-                        # header_name: ":path"
-                        # descriptor_key: "path"
+                        - request_headers:
+                            header_name: ":path"
+                            descriptor_key: "path"
 
   clusters:
     - name: rate-limit-service

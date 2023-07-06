@@ -14,7 +14,11 @@ use envoy::{
         RateLimitRequest, RateLimitResponse,
     },
 };
-use tonic::{transport::Server, Code, Response};
+use tonic::{transport::Server, Response};
+
+use crate::envoy::{
+    config::core::v3::HeaderValue, service::ratelimit::v3::rate_limit_response::Code,
+};
 struct RateLimitServiceImpl {}
 
 #[tonic::async_trait]
@@ -23,6 +27,7 @@ impl rate_limit_service_server::RateLimitService for RateLimitServiceImpl {
         &self,
         request: tonic::Request<RateLimitRequest>,
     ) -> std::result::Result<Response<RateLimitResponse>, tonic::Status> {
+        // https://www.envoyproxy.io/docs/envoy/latest/api-v3/service/ratelimit/v3/rls.proto.html#service-ratelimit-v3-ratelimitresponse
         println!("here");
         let request = request.into_inner();
         for descriptor in request.descriptors.iter() {
@@ -30,15 +35,29 @@ impl rate_limit_service_server::RateLimitService for RateLimitServiceImpl {
                 println!("key: {}, value: {}", key, value);
             }
         }
-        Ok(Response::new(RateLimitResponse {
-            overall_code: Code::Ok as i32,
-            statuses: vec![],
-            quota: None,
-            response_headers_to_add: vec![],
-            request_headers_to_add: vec![],
-            raw_body: vec![],
-            dynamic_metadata: None,
-        }))
+        let ok = rand::random::<bool>();
+        println!("ok: {}", ok);
+        match ok {
+            true => Ok(Response::new(RateLimitResponse {
+                overall_code: Code::Ok as i32,
+                statuses: vec![],
+                quota: None,
+                response_headers_to_add: vec![],
+                request_headers_to_add: vec![],
+                raw_body: vec![],
+                dynamic_metadata: None,
+            })),
+            false => Ok(Response::new(RateLimitResponse {
+                overall_code: Code::OverLimit as i32,
+                statuses: vec![],
+                response_headers_to_add: vec![],
+                request_headers_to_add: vec![],
+                raw_body: vec![],
+                dynamic_metadata: None,
+                quota: None,
+            })),
+            // false => Err(tonic::Status::),
+        }
         // Err(tonic::Status::new(Code::Ok, "not passed"))
         // todo!()
     }
