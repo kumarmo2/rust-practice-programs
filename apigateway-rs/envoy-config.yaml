@@ -35,7 +35,7 @@ static_resources:
                     "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimit
                     domain: "localhost"
                     timeout: 2s
-                    failure_mode_deny: true # if rate limiting service doesn't respond back, envoy should return error.
+                    failure_mode_deny: false # if `true`, if rate limiting service doesn't respond back, envoy should return error.
                     rate_limit_service:
                       transport_api_version: V3
                       grpc_service:
@@ -76,8 +76,12 @@ static_resources:
                         - generic_key:
                             descriptor_value: some_value
                         - request_headers:
+                            # :path & :method are `psuedo headers`. https://stackoverflow.com/questions/30900008/purpose-of-pseudo-colon-header-fields
                             header_name: ":path"
                             descriptor_key: "path"
+                        - request_headers:
+                            header_name: ":method"
+                            descriptor_key: "method"
 
   clusters:
     - name: rate-limit-service

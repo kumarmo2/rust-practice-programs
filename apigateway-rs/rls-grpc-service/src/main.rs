@@ -14,12 +14,14 @@ use envoy::{
         RateLimitRequest, RateLimitResponse,
     },
 };
+use redis::RedisResult;
 use tonic::{transport::Server, Response};
 
-use crate::envoy::{
-    config::core::v3::HeaderValue, service::ratelimit::v3::rate_limit_response::Code,
-};
-struct RateLimitServiceImpl {}
+use crate::envoy::service::ratelimit::v3::rate_limit_response::Code;
+struct RateLimitServiceImpl {
+    // TODO: use some sort of connection pooling.
+    redis_client: redis::Client,
+}
 
 #[tonic::async_trait]
 impl rate_limit_service_server::RateLimitService for RateLimitServiceImpl {
@@ -36,6 +38,14 @@ impl rate_limit_service_server::RateLimitService for RateLimitServiceImpl {
             }
         }
         let ok = rand::random::<bool>();
+        let mut connection = self.redis_client.get_async_connection().await.unwrap();
+        let result: RedisResult<String> = redis::cmd("set")
+            .arg("key-3")
+            .arg(b"key-4")
+            .query_async(&mut connection)
+            .await;
+
+        println!("resutlt: {:?}", result);
         println!("ok: {}", ok);
         match ok {
             true => Ok(Response::new(RateLimitResponse {
@@ -56,18 +66,17 @@ impl rate_limit_service_server::RateLimitService for RateLimitServiceImpl {
                 dynamic_metadata: None,
                 quota: None,
             })),
-            // false => Err(tonic::Status::),
         }
-        // Err(tonic::Status::new(Code::Ok, "not passed"))
-        // todo!()
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // let x = envoy::service::ratelimit::v3::RateLimitRequest {};
+    let client = redis::Client::open("redis://127.0.0.1/")?;
     Server::builder()
-        .add_service(RateLimitServiceServer::new(RateLimitServiceImpl {}))
+        .add_service(RateLimitServiceServer::new(RateLimitServiceImpl {
+            redis_client: client,
+        }))
         .serve("0.0.0.0:9000".parse().unwrap())
         .await?;
     Ok(())
