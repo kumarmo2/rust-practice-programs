@@ -8,13 +8,14 @@ admin:
 
 static_resources:
   listeners:
-  - name: http_listener
-    address:
-      socket_address:
-        address: 0.0.0.0
-        port_value: 3000
-    filter_chains:
+    - name: http_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 3000
+      filter_chains:
         filters:
+          # HttpConnectionManager proto config: https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto#envoy-v3-api-file-envoy-extensions-filters-network-http-connection-manager-v3-http-connection-manager-proto
           - name: envoy.filters.network.http_connection_manager
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
@@ -27,20 +28,34 @@ static_resources:
               # https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/router_filter#config-http-filters-router
               #https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/http/router/v3/router.proto#router
               request_timeout: 300s
+              # http_filters proto conf: https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto#extensions-filters-network-http-connection-manager-v3-httpfilter
               http_filters:
-                # Role of `router` filter is request routing according to the "route table".
-                # Route Table can be configured statically using `route_config` or dynamically using `rds`(not sure what scoped routes do)
+                - name: envoy.filters.http.ratelimit
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimit
+                    domain: "localhost"
+                    timeout: 2s
+                    failure_mode_deny: true # if rate limiting service doesn't respond back, envoy should return error.
+                    rate_limit_service:
+                      transport_api_version: V3
+                      grpc_service:
+                        envoy_grpc:
+                          cluster_name: "rate-limit-service"
+
                 - name: envoy.filters.http.router
+                  # Role of `router` filter is request routing according to the "route table".
+                  # Route Table can be configured statically using `route_config` or dynamically using `rds`(not sure what scoped routes do)
                   typed_config:
                     "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
               access_log:
                 - name: envoy.access_loggers.file
                   typed_config:
                     "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
                     path: /var/log/access_logs
               route_config:
-              # route_config basically configures the `route table` for the connection manager
-              # Precisely one of rds, route_config, scoped_routes must be set.
+                # route_config basically configures the `route table` for the connection manager
+                # Precisely one of rds, route_config, scoped_routes must be set.
                 name: all
                 virtual_hosts:
                   - name: personalwebsite
@@ -51,10 +66,34 @@ static_resources:
                           prefix: "/"
                         route:
                           cluster: apis
-
-
+                    rate_limits:
+                      # NOTE: do read the below link to understand actions.
+                      # In short, these actions send some `metadata/descriptors` to the RLS service
+                      # which then can use those to make the decision on whether to rate limit or not.
+                      # https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/rate_limit_filter#config-http-filters-rate-limit-composing-actions
+                      actions:
+                        - source_cluster: {}
+                        - generic_key:
+                            descriptor_value: some_value
+                        # - request_headers:
+                        # header_name: ":path"
+                        # descriptor_key: "path"
 
   clusters:
+    - name: rate-limit-service
+      connect_timeout: 1s
+      type: strict_dns
+      http2_protocol_options: {}
+      load_assignment:
+        cluster_name: rate-limit-service
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: host.docker.internal
+                      port_value: 9000
+
     - name: apis
       connect_timeout: 1s
       type: strict_dns
