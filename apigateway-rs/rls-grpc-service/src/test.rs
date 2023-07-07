@@ -56,3 +56,52 @@ fn root_path_prefix_tests() {
             .len()
     );
 }
+
+#[test]
+fn multiple_rate_limit_configs_test() {
+    let throttler = Throttler::new(vec![
+        RateLimitConfig {
+            api_path_prefix: "/api/v1/foo".to_string(),
+            method: HttpMethod::Get,
+            window: 1,
+            max_requests: 5,
+            time_unit: TimeUnit::M,
+        },
+        RateLimitConfig {
+            api_path_prefix: "/api/v1/foo".to_string(),
+            method: HttpMethod::Post,
+            window: 1,
+            max_requests: 5,
+            time_unit: TimeUnit::M,
+        },
+        RateLimitConfig {
+            api_path_prefix: "/api/v2".to_string(),
+            method: HttpMethod::Get,
+            window: 1,
+            max_requests: 5,
+            time_unit: TimeUnit::M,
+        },
+        RateLimitConfig {
+            api_path_prefix: "/api/v1/".to_string(),
+            method: HttpMethod::Get,
+            window: 1,
+            max_requests: 5,
+            time_unit: TimeUnit::M,
+        },
+    ]);
+
+    let eligible_configs = throttler
+        .get_eligible_rate_limit_configs("/api/v1/foo/1/", HttpMethod::Get)
+        .collect::<Vec<_>>();
+
+    assert_eq!(2, eligible_configs.len());
+
+    let config = &eligible_configs[0];
+    assert_eq!(config.method, HttpMethod::Get);
+    assert_eq!(config.api_path_prefix, "/api/v1/foo");
+
+    let config = &eligible_configs[1];
+    assert_eq!(config.method, HttpMethod::Get);
+    assert_eq!(config.api_path_prefix, "/api/v1"); // Note that i have removed trailing '/' as it
+                                                   // is removed as part of sanitization during throttler initialization.
+}
