@@ -20,8 +20,9 @@ use envoy::{
         RateLimitRequest, RateLimitResponse,
     },
 };
-use redis::RedisResult;
+
 use serde::{Deserialize, Serialize};
+use throttler::Throttler;
 use tonic::{transport::Server, Response};
 
 use crate::envoy::service::ratelimit::v3::rate_limit_response::Code;
@@ -29,7 +30,8 @@ use crate::envoy::service::ratelimit::v3::rate_limit_response::Code;
 struct RateLimitServiceImpl {
     // TODO: use some sort of connection pooling.
     redis_client: redis::Client,
-    rate_limit_configs: Vec<RateLimitConfig>,
+    // rate_limit_configs: Vec<RateLimitConfig>,
+    throttler: Throttler,
 }
 
 #[derive(Serialize, Deserialize, Debug, Hash, Clone, Copy, PartialEq, Eq)]
@@ -55,6 +57,17 @@ impl TryFrom<&str> for HttpMethod {
     }
 }
 
+impl HttpMethod {
+    pub(crate) fn to_str(&self) -> &'static str {
+        match self {
+            HttpMethod::Get => "get",
+            HttpMethod::Post => "post",
+            HttpMethod::Put => "put",
+            HttpMethod::Delete => "delete",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 enum TimeUnit {
@@ -72,6 +85,22 @@ pub(crate) struct RateLimitConfig {
     pub(crate) time_unit: TimeUnit,
     pub(crate) window: u32,
     pub(crate) max_requests: u32,
+}
+
+impl RateLimitConfig {
+    pub(crate) fn get_window_in_seconds(&self) -> u32 {
+        self.window * self.time_unit as u32
+    }
+
+    pub(crate) fn get_config_key_for_client(&self, client_id: &str) -> String {
+        format!(
+            "client={}|path={}|method={}|window={}",
+            client_id,
+            self.api_path_prefix,
+            self.method.to_str(),
+            self.get_window_in_seconds()
+        )
+    }
 }
 
 fn get_path_method(
@@ -102,9 +131,6 @@ impl rate_limit_service_server::RateLimitService for RateLimitServiceImpl {
         request: tonic::Request<RateLimitRequest>,
     ) -> std::result::Result<Response<RateLimitResponse>, tonic::Status> {
         // https://www.envoyproxy.io/docs/envoy/latest/api-v3/service/ratelimit/v3/rls.proto.html#service-ratelimit-v3-ratelimitresponse
-        println!("here");
-        let path = "dfsdf".to_string();
-        let method = HttpMethod::Put;
         let request = request.into_inner();
 
         let (Some(path), Some(method)) = get_path_method(request.descriptors) else {
@@ -133,23 +159,22 @@ impl rate_limit_service_server::RateLimitService for RateLimitServiceImpl {
                 dynamic_metadata: None,
             }))
         };
-        println!(
-            "will check the rate limit config, method: {:?}, path: {}",
-            method, path
-        );
-        let ok = rand::random::<bool>();
-        let mut connection = self.redis_client.get_async_connection().await.unwrap();
-        let result: RedisResult<String> = redis::cmd("set")
-            .arg("key-3")
-            .arg(b"key-4")
-            .query_async(&mut connection)
-            .await;
-
-        println!("resutlt: {:?}", result);
-        println!("ok: {}", ok);
-        match ok {
+        println!(" method: {:?}, path: {}", method, path);
+        let should_throttle = match self
+            .throttler
+            .should_throttle(path.as_str(), method, "cxsdfsdf", &self.redis_client)
+            .await
+        {
+            Ok(result) => result,
+            Err(err) => {
+                println!("error from should_throttle: {}", err);
+                false
+            }
+        };
+        println!("should_throttle: {}", should_throttle);
+        match should_throttle {
             true => Ok(Response::new(RateLimitResponse {
-                overall_code: Code::Ok as i32,
+                overall_code: Code::OverLimit as i32,
                 statuses: vec![],
                 quota: None,
                 response_headers_to_add: vec![],
@@ -158,7 +183,7 @@ impl rate_limit_service_server::RateLimitService for RateLimitServiceImpl {
                 dynamic_metadata: None,
             })),
             false => Ok(Response::new(RateLimitResponse {
-                overall_code: Code::OverLimit as i32,
+                overall_code: Code::Ok as i32,
                 statuses: vec![],
                 response_headers_to_add: vec![],
                 request_headers_to_add: vec![],
@@ -174,19 +199,26 @@ impl rate_limit_service_server::RateLimitService for RateLimitServiceImpl {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = redis::Client::open("redis://127.0.0.1/")?;
     let ratelimit_config = RateLimitConfig {
-        api_path_prefix: "sdfsdf".to_string(),
+        api_path_prefix: "/api/".to_string(),
         method: HttpMethod::Get,
-        window: 1,
-        time_unit: TimeUnit::M,
-        max_requests: 10,
+        window: 10,
+        time_unit: TimeUnit::S,
+        max_requests: 3,
     };
-    let cloned = ratelimit_config.clone();
-    let rate_limit_configs = vec![ratelimit_config];
+    let mut rate_limit_configs = vec![ratelimit_config];
+    let ratelimit_config = RateLimitConfig {
+        api_path_prefix: "/".to_string(),
+        method: HttpMethod::Get,
+        window: 2,
+        time_unit: TimeUnit::M,
+        max_requests: 7,
+    };
+    rate_limit_configs.push(ratelimit_config);
 
     Server::builder()
         .add_service(RateLimitServiceServer::new(RateLimitServiceImpl {
             redis_client: client,
-            rate_limit_configs,
+            throttler: Throttler::new(rate_limit_configs),
         }))
         .serve("0.0.0.0:9000".parse().unwrap())
         .await?;

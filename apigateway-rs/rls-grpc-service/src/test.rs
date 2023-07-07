@@ -88,13 +88,20 @@ fn multiple_rate_limit_configs_test() {
             max_requests: 5,
             time_unit: TimeUnit::M,
         },
+        RateLimitConfig {
+            api_path_prefix: "/".to_string(),
+            method: HttpMethod::Get,
+            window: 1,
+            max_requests: 5,
+            time_unit: TimeUnit::M,
+        },
     ]);
 
     let eligible_configs = throttler
         .get_eligible_rate_limit_configs("/api/v1/foo/1/", HttpMethod::Get)
         .collect::<Vec<_>>();
 
-    assert_eq!(2, eligible_configs.len());
+    assert_eq!(3, eligible_configs.len());
 
     let config = &eligible_configs[0];
     assert_eq!(config.method, HttpMethod::Get);
@@ -104,4 +111,7 @@ fn multiple_rate_limit_configs_test() {
     assert_eq!(config.method, HttpMethod::Get);
     assert_eq!(config.api_path_prefix, "/api/v1"); // Note that i have removed trailing '/' as it
                                                    // is removed as part of sanitization during throttler initialization.
+    let config = &eligible_configs[2];
+    assert_eq!(config.method, HttpMethod::Get);
+    assert_eq!(config.api_path_prefix, ""); // Note that i have removed trailing '/' as it
 }
