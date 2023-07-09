@@ -25,7 +25,9 @@ use serde::{Deserialize, Serialize};
 use throttler::Throttler;
 use tonic::{transport::Server, Response};
 
-use crate::envoy::service::ratelimit::v3::rate_limit_response::Code;
+use crate::envoy::{
+    config::core::v3::HeaderValue, service::ratelimit::v3::rate_limit_response::Code,
+};
 
 struct RateLimitServiceImpl {
     // TODO: use some sort of connection pooling.
@@ -159,10 +161,10 @@ impl rate_limit_service_server::RateLimitService for RateLimitServiceImpl {
                 dynamic_metadata: None,
             }))
         };
-        println!(" method: {:?}, path: {}", method, path);
+        // println!(" method: {:?}, path: {}", method, path);
         let should_throttle = match self
             .throttler
-            .should_throttle(path.as_str(), method, "cxsdfsdf", &self.redis_client)
+            .should_throttle(path.as_str(), method, "cvbcvb", &self.redis_client)
             .await
         {
             Ok(result) => result,
@@ -177,16 +179,28 @@ impl rate_limit_service_server::RateLimitService for RateLimitServiceImpl {
                 overall_code: Code::OverLimit as i32,
                 statuses: vec![],
                 quota: None,
-                response_headers_to_add: vec![],
-                request_headers_to_add: vec![],
+                response_headers_to_add: vec![HeaderValue {
+                    key: "sdf".to_string(),
+                    value: "cvxcv".to_string(),
+                }],
+                request_headers_to_add: vec![HeaderValue {
+                    key: "k1".to_string(),
+                    value: "v1".to_string(),
+                }],
                 raw_body: vec![],
                 dynamic_metadata: None,
             })),
             false => Ok(Response::new(RateLimitResponse {
                 overall_code: Code::Ok as i32,
                 statuses: vec![],
-                response_headers_to_add: vec![],
-                request_headers_to_add: vec![],
+                response_headers_to_add: vec![HeaderValue {
+                    key: "poiuy".to_string(),
+                    value: "cvxcv".to_string(),
+                }],
+                request_headers_to_add: vec![HeaderValue {
+                    key: "k2".to_string(),
+                    value: "v2".to_string(),
+                }],
                 raw_body: vec![],
                 dynamic_metadata: None,
                 quota: None,

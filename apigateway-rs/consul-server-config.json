@@ -1,0 +1,14 @@
+{
+  "server": true,
+  "datacenter": "mydc",
+  "node_name": "node1",
+  "bind_addr": "{{ GetInterfaceIP \"wlp6s0\" }}",
+  "data_dir": "/tmp/consul",
+  "bootstrap_expect": 1,
+  "log_level": "INFO",
+  "node_name": "node1",
+  "auto_reload_config": true,
+  "ui_config": {
+    "enabled": true
+  }
+}
