@@ -1,4 +1,4 @@
-#![allow(unused_variables)]
+#![allow(unused_variables, unused_imports)]
 pub(crate) mod envoy;
 
 pub(crate) mod validate;
@@ -11,7 +11,11 @@ pub(crate) mod udpa;
 mod test;
 pub(crate) mod throttler;
 
+use ctrlc;
+use rs_consul::{Config, Consul, RegisterEntityPayload, RegisterEntityService};
+use std::collections::HashMap;
 use std::hash::Hash;
+use std::sync::mpsc::channel;
 
 use envoy::{
     extensions::common::ratelimit::v3::{rate_limit_descriptor::Entry, RateLimitDescriptor},
@@ -211,6 +215,35 @@ impl rate_limit_service_server::RateLimitService for RateLimitServiceImpl {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // TODO: deregistering.
+    let config = Config::from_env();
+    let consul = Consul::new(config);
+    consul
+        .register_entity(&RegisterEntityPayload {
+            ID: Some(uuid::Uuid::new_v4().to_string()),
+            Node: "node-1".to_string(),
+            Address: "http://192.168.122.1".to_string(),
+            Datacenter: Some("mydc".to_string()),
+            TaggedAddresses: HashMap::new(),
+            NodeMeta: HashMap::new(),
+            Service: Some(RegisterEntityService {
+                ID: Some("rls-service-1".to_string()),
+                Service: "rls-service".to_string(), // dig @127.0.0.1 -p 8600 rls-service.service.consul
+                Tags: vec!["rls_service".to_string(), "internal".to_string()],
+                TaggedAddresses: HashMap::new(),
+                Meta: HashMap::new(),
+                Port: Some(9000),
+                Namespace: None,
+            }),
+            Check: None,
+            SkipNodeUpdate: None,
+        })
+        .await?;
+
+    let (tx, rx) = channel();
+
+    ctrlc::set_handler(move || tx.send(()).unwrap())?;
+
     let client = redis::Client::open("redis://127.0.0.1/")?;
     let ratelimit_config = RateLimitConfig {
         api_path_prefix: "/api/".to_string(),
@@ -229,12 +262,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     rate_limit_configs.push(ratelimit_config);
 
-    Server::builder()
-        .add_service(RateLimitServiceServer::new(RateLimitServiceImpl {
-            redis_client: client,
-            throttler: Throttler::new(rate_limit_configs),
-        }))
-        .serve("0.0.0.0:9000".parse().unwrap())
-        .await?;
+    tokio::spawn(async {
+        Server::builder()
+            .add_service(RateLimitServiceServer::new(RateLimitServiceImpl {
+                redis_client: client,
+                throttler: Throttler::new(rate_limit_configs),
+            }))
+            .serve("0.0.0.0:9000".parse().unwrap())
+            .await
+            .unwrap()
+    });
+    rx.recv().unwrap();
+    println!("ctrl-c received");
+    // service::deregister(&client, id, opts)
     Ok(())
 }

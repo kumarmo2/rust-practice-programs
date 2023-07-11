@@ -1,11 +1,11 @@
-  datacenter = "mydc",
-  node_name = "node1",
-  #bind_addr = "{{ GetInterfaceIP \"enp7s0\" }}",
-  bind_addr = "127.0.0.1",
-  ports = {
-  http = 8601,
-  dns = 8700
-  }
-  data_dir = "/tmp/consul",
-  log_level = "INFO",
-  auto_reload_config = true,
+server = false,
+datacenter = "mydc",
+node_name = "node-client-1",
+#bind_addr = "{{ GetInterfaceIP \"wlp6s0\" }}",
+bind_addr = "{{ GetInterfaceIP \"virbr0\" }}",
+client_addr = "0.0.0.0"
+#bind_addr = "0.0.0.0",
+data_dir = "/tmp/consul",
+log_level = "INFO",
+retry_join=["192.168.122.80", "192.168.122.247", "192.168.122.168"],
+auto_reload_config = true,
