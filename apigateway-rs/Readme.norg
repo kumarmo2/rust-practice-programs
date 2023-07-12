@@ -5,3 +5,5 @@
 
 * Consul
   - {https://developer.hashicorp.com/consul/docs/agent/config/config-files#auto_reload_config}[consul config]
+  - 8500: default http port
+  - 8600: default dns port
