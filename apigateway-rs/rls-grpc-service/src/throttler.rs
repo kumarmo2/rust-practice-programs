@@ -70,6 +70,7 @@ impl Throttler {
         let num_of_windows = eligible_configs.len();
         let mut args = vec![num_of_windows as u32];
         let mut keys = vec![];
+        println!("num_of_windows: {}", num_of_windows);
         for config in eligible_configs.iter() {
             args.push(config.get_window_in_seconds());
             args.push(config.max_requests);

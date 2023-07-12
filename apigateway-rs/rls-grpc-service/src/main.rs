@@ -11,8 +11,10 @@ pub(crate) mod udpa;
 mod test;
 pub(crate) mod throttler;
 
+use consulrs::api::service::requests::{RegisterServiceRequest, RegisterServiceRequestBuilder};
+use consulrs::client::{ConsulClient, ConsulClientSettings, ConsulClientSettingsBuilder};
+use consulrs::service::{deregister, register};
 use ctrlc;
-use rs_consul::{Config, Consul, RegisterEntityPayload, RegisterEntityService};
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::mpsc::channel;
@@ -216,29 +218,22 @@ impl rate_limit_service_server::RateLimitService for RateLimitServiceImpl {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // TODO: deregistering.
-    let config = Config::from_env();
-    let consul = Consul::new(config);
-    consul
-        .register_entity(&RegisterEntityPayload {
-            ID: Some(uuid::Uuid::new_v4().to_string()),
-            Node: "node-1".to_string(),
-            Address: "http://192.168.122.1".to_string(),
-            Datacenter: Some("mydc".to_string()),
-            TaggedAddresses: HashMap::new(),
-            NodeMeta: HashMap::new(),
-            Service: Some(RegisterEntityService {
-                ID: Some("rls-service-1".to_string()),
-                Service: "rls-service".to_string(), // dig @127.0.0.1 -p 8600 rls-service.service.consul
-                Tags: vec!["rls_service".to_string(), "internal".to_string()],
-                TaggedAddresses: HashMap::new(),
-                Meta: HashMap::new(),
-                Port: Some(9000),
-                Namespace: None,
-            }),
-            Check: None,
-            SkipNodeUpdate: None,
-        })
-        .await?;
+
+    // RegisterServiceRequest{ features: todo!(),
+    // address: todo!(), check: todo!(), checks: todo!(), connect: todo!(), enable_tag_override: todo!(), id: todo!(), kind: todo!(), meta: todo!(), name: todo!(), ns: todo!(), port: todo!(), proxy: todo!(), tagged_addresses: todo!(), tags: todo!(), weights: todo!() }
+    // ConsulClientSettings{}
+    let consul_client = ConsulClient::new(ConsulClientSettingsBuilder::default().build()?)?;
+    register(
+        &consul_client,
+        "rls-service",
+        Some(
+            &mut (RegisterServiceRequestBuilder::default()
+                .id("rls-service-1")
+                .port(9000 as u64))
+            .tags(vec!["tag2".to_string(), "tag1".to_string()]),
+        ),
+    )
+    .await?;
 
     let (tx, rx) = channel();
 
@@ -275,5 +270,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     rx.recv().unwrap();
     println!("ctrl-c received");
     // service::deregister(&client, id, opts)
+    deregister(&consul_client, "rls-service-1", None).await?;
     Ok(())
 }

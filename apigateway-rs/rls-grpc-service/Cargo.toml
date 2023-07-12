@@ -15,8 +15,8 @@ redis = { version = "0.23.0", features = ["tokio-comp", "aio"] }
 serde = {version = "1.0.166", features = ["derive"]}
 serde_json = "1.0.100"
 ctrlc = "3.4.0"
-rs-consul = "0.2.3"
 uuid = {version = "1.4.0", features = ["v4"]}
+consulrs = "0.1.0"
 
 [build-dependencies]
 tonic-build = "0.9.2"
