@@ -5,7 +5,10 @@ fn main() -> std::io::Result<()> {
     // .build_server(true)
     // .out_dir("../compiled_protos")
     // .compile(
-    // &["./protos/envoy/service/ratelimit/v3/rls.proto"],
+    // &[
+    // "./protos/envoy/service/ratelimit/v3/rls.proto",
+    // "./protos/grpc/health/v1/health.proto",
+    // ],
     // &["./protos/"],
     // )?;
     Ok(())

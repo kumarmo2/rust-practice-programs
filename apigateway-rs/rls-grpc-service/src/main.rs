@@ -5,16 +5,19 @@ pub(crate) mod validate;
 
 pub(crate) mod xds;
 
+pub(crate) mod grpc;
 pub(crate) mod udpa;
 
 #[cfg(test)]
 mod test;
 pub(crate) mod throttler;
 
+use consulrs::api::check::common::{AgentServiceCheck, AgentServiceCheckBuilder};
 use consulrs::api::service::requests::{RegisterServiceRequest, RegisterServiceRequestBuilder};
 use consulrs::client::{ConsulClient, ConsulClientSettings, ConsulClientSettingsBuilder};
 use consulrs::service::{deregister, register};
 use ctrlc;
+use grpc::health::v1::HealthCheckResponse;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::mpsc::channel;
@@ -27,6 +30,8 @@ use envoy::{
     },
 };
 
+use grpc::health::v1::health_server::{self, Health, HealthServer};
+
 use serde::{Deserialize, Serialize};
 use throttler::Throttler;
 use tonic::{transport::Server, Response};
@@ -34,12 +39,29 @@ use tonic::{transport::Server, Response};
 use crate::envoy::{
     config::core::v3::HeaderValue, service::ratelimit::v3::rate_limit_response::Code,
 };
+use crate::grpc::health::v1::health_check_response::ServingStatus;
 
 struct RateLimitServiceImpl {
     // TODO: use some sort of connection pooling.
     redis_client: redis::Client,
     // rate_limit_configs: Vec<RateLimitConfig>,
     throttler: Throttler,
+}
+
+struct HealthServiceImpl {}
+
+#[tonic::async_trait]
+// NOTE: In my proto definition, i have commented out the streaming endpoint.
+impl Health for HealthServiceImpl {
+    async fn check(
+        &self,
+        request: tonic::Request<grpc::health::v1::HealthCheckRequest>,
+    ) -> std::result::Result<tonic::Response<HealthCheckResponse>, tonic::Status> {
+        println!("got the request for health check");
+        Ok(tonic::Response::new(HealthCheckResponse {
+            status: ServingStatus::Serving as i32,
+        }))
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Hash, Clone, Copy, PartialEq, Eq)]
@@ -219,9 +241,6 @@ impl rate_limit_service_server::RateLimitService for RateLimitServiceImpl {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // TODO: deregistering.
 
-    // RegisterServiceRequest{ features: todo!(),
-    // address: todo!(), check: todo!(), checks: todo!(), connect: todo!(), enable_tag_override: todo!(), id: todo!(), kind: todo!(), meta: todo!(), name: todo!(), ns: todo!(), port: todo!(), proxy: todo!(), tagged_addresses: todo!(), tags: todo!(), weights: todo!() }
-    // ConsulClientSettings{}
     let consul_client = ConsulClient::new(ConsulClientSettingsBuilder::default().build()?)?;
     register(
         &consul_client,
@@ -229,7 +248,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(
             &mut (RegisterServiceRequestBuilder::default()
                 .id("rls-service-1")
-                .port(9000 as u64))
+                .port(9000 as u64)
+                // health check with consul.
+                // https://developer.hashicorp.com/consul/api-docs/agent/check#register-check
+                .check(
+                    AgentServiceCheckBuilder::default()
+                        .name("rls-service-health-check")
+                        .deregister_critical_service_after("5m")
+                        .interval("5s")
+                        .grpc("localhost:9000/grpc.health.v1.Health/Check")
+                        // grpc.health.v1
+                        .build()?,
+                ))
             .tags(vec!["tag2".to_string(), "tag1".to_string()]),
         ),
     )
@@ -263,13 +293,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 redis_client: client,
                 throttler: Throttler::new(rate_limit_configs),
             }))
+            .add_service(HealthServer::new(HealthServiceImpl {}))
             .serve("0.0.0.0:9000".parse().unwrap())
             .await
             .unwrap()
     });
     rx.recv().unwrap();
     println!("ctrl-c received");
-    // service::deregister(&client, id, opts)
     deregister(&consul_client, "rls-service-1", None).await?;
     Ok(())
 }
