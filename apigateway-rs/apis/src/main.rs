@@ -1,15 +1,32 @@
+mod api_log_layer;
+use api_log_layer::ApiLogLayer;
 use axum::debug_handler;
 use axum::extract::Path;
 use axum::http::HeaderMap;
 use axum::response::Json;
 use axum::routing::{get, Router};
+use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use tower::ServiceBuilder;
+
+#[derive(Clone)]
+struct AppState {
+    prom_registry: Arc<RwLock<Registry>>,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut router = Router::new();
-    router = router.route("/", get(home_handler));
-    router = router.route("/*path", get(default_handler));
+    let prom_registry = Arc::new(RwLock::new(Registry::default()));
+    let app_state = AppState { prom_registry };
+    let router = Router::new();
+    let router = router.route("/", get(home_handler));
+    let router = router
+        .route("/*path", get(default_handler))
+        .layer(ServiceBuilder::default().layer(ApiLogLayer::new(app_state.clone())))
+        .with_state(app_state.clone());
+
     axum::Server::bind(&"0.0.0.0:3001".parse().unwrap())
         .serve(router.into_make_service())
         .await?;
