@@ -1,7 +1,14 @@
-* Rate Limit related protos 
+* ( ) TODOS
+  - ( ) register envoy as well in the consul
+  -- ( ) once this is done, allow prometheus to scrape it. 
+
+
+* Third party Protos 
   - {https://github.com/cncf/xds}[xds & udpa]
   - {https://github.com/envoyproxy/envoy/tree/main/api}[envoy]
   - {https://github.com/bufbuild/protoc-gen-validate/tree/main}[validate protos]
+  - {https://github.com/grpc/grpc-proto/blob/master/grpc/health/v1/health.proto}[grpc health check]
+
 
 * Envoy Health Check
   - {https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/health_checking#arch-overview-health-checking-filter}[health check]

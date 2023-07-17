@@ -31,10 +31,10 @@ fn main() {
                 path: format!("/api/sdf/{}", i),
             })
             .inc();
-        let mut buffer = String::new();
-
-        encode(&mut buffer, &registry).unwrap();
-
-        println!("metrics: {}", buffer);
     }
+    let mut buffer = String::new();
+
+    encode(&mut buffer, &registry).unwrap();
+
+    println!("metrics: {}", buffer);
 }
