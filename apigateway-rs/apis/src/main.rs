@@ -1,9 +1,10 @@
 mod api_log_layer;
-use api_log_layer::ApiLogLayer;
+use api_log_layer::{ApiLogLayer, ApiLogServiceError};
 use axum::debug_handler;
+use axum::error_handling::HandleErrorLayer;
 use axum::extract::Path;
-use axum::http::HeaderMap;
-use axum::response::Json;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, Router};
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
@@ -24,13 +25,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let router = router.route("/", get(home_handler));
     let router = router
         .route("/*path", get(default_handler))
-        .layer(ServiceBuilder::default().layer(ApiLogLayer::new(app_state.clone())))
+        .layer(
+            ServiceBuilder::default()
+                .layer(HandleErrorLayer::new(handle_api_log_layer_error))
+                .layer(ApiLogLayer::new(app_state.clone())),
+        )
         .with_state(app_state.clone());
 
     axum::Server::bind(&"0.0.0.0:3001".parse().unwrap())
         .serve(router.into_make_service())
         .await?;
     Ok(())
+}
+
+// async fn handle_api_log_layer_error<E>(err: ApiLogServiceError<E>) -> StatusCode
+async fn handle_api_log_layer_error<E>(err: ApiLogServiceError<E>) -> E {
+    err.inner
 }
 
 #[derive(Serialize, Deserialize)]
