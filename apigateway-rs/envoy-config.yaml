@@ -12,7 +12,7 @@ static_resources:
       address:
         socket_address:
           address: 0.0.0.0
-          port_value: 3000
+          port_value: 5000
       filter_chains:
         filters:
           # HttpConnectionManager proto config: https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto#envoy-v3-api-file-envoy-extensions-filters-network-http-connection-manager-v3-http-connection-manager-proto

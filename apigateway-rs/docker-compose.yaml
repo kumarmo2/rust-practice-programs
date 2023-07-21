@@ -4,7 +4,7 @@ services:
   lb:
     image: envoyproxy/envoy:v1.26-latest
     ports:
-      - 3000:3000
+      - 5000:5000
       - 9901:9901
     volumes:
       - ./envoy-config.yaml:/etc/envoy/envoy.yaml

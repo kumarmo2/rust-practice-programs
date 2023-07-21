@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let counter = Family::default();
 
     prom_registry.register(
-        "http_request_total",
+        "custom_http_request_total",
         "Counts number of http requests",
         counter.clone(),
     );
