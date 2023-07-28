@@ -49,10 +49,21 @@ static_resources:
                     "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 
               access_log:
-                - name: envoy.access_loggers.file
+                - name: envoy.access_loggers.http_grpc
                   typed_config:
-                    "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
-                    path: /var/log/access_logs
+                    "@type": type.googleapis.com/envoy.extensions.access_loggers.grpc.v3.HttpGrpcAccessLogConfig
+                    common_config:
+                      log_name: envoy_hcm_logger
+                      transport_api_version: V3
+                      grpc_service:
+                        envoy_grpc:
+                          cluster_name: access_log_service
+              # File access_log.
+              # access_log:
+              # - name: envoy.access_loggers.file
+              # typed_config:
+              # "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
+              # path: /var/log/access_logs
               route_config:
                 # route_config basically configures the `route table` for the connection manager
                 # Precisely one of rds, route_config, scoped_routes must be set.
@@ -84,6 +95,20 @@ static_resources:
                             descriptor_key: "method"
 
   clusters:
+    - name: access_log_service
+      connect_timeout: 1s
+      type: strict_dns
+      http2_protocol_options: {}
+      load_assignment:
+        cluster_name: access_log_service
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: host.docker.internal
+                      port_value: 9001
+
     - name: rate-limit-service
       connect_timeout: 1s
       type: strict_dns

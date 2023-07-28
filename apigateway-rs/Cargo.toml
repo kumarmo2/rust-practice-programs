@@ -2,6 +2,7 @@
 
 members = [
 "apis",
+"als-grpc-service",
 "rls-grpc-service",
 "practice-scratchpad"
 ]
