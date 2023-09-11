@@ -1,103 +1,75 @@
 #![allow(unused_variables, dead_code)]
 mod envoy;
+mod log_service;
 mod xds;
 
-use envoy::service::accesslog::v3::access_log_service_server::AccessLogService;
-use tokio_stream::StreamExt;
-use tonic::async_trait;
+use std::{ops::Deref, sync::Arc};
 
-use crate::envoy::config::core::v3::RequestMethod;
-use crate::envoy::service::accesslog::v3::access_log_service_server::AccessLogServiceServer;
-use crate::envoy::service::accesslog::v3::stream_access_logs_message::LogEntries;
-struct CustomAccessLogService;
+use axum::{
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    routing::get,
+    Router,
+};
+use prometheus_client::{encoding::text::encode, metrics::family::Family, registry::Registry};
 
-const HTTP_METHOD_UNSPECIFIED: i32 = RequestMethod::MethodUnspecified as i32;
-const HTTP_GET: i32 = RequestMethod::Get as i32;
-const HTTP_HEAD: i32 = RequestMethod::Head as i32;
-const HTTP_POST: i32 = RequestMethod::Post as i32;
-const HTTP_PUT: i32 = RequestMethod::Put as i32;
-const HTTP_DELETE: i32 = RequestMethod::Delete as i32;
-const HTTP_CONNECT: i32 = RequestMethod::Connect as i32;
-const HTTP_OPTIONS: i32 = RequestMethod::Options as i32;
-const HTTP_TRACE: i32 = RequestMethod::Trace as i32;
-const HTTP_PATCH: i32 = RequestMethod::Patch as i32;
-
-fn get_method(method: i32) -> &'static str {
-    match method {
-        HTTP_METHOD_UNSPECIFIED => RequestMethod::MethodUnspecified.as_str_name(),
-        HTTP_GET => RequestMethod::Get.as_str_name(),
-        HTTP_HEAD => RequestMethod::Head.as_str_name(),
-        HTTP_POST => RequestMethod::Post.as_str_name(),
-        HTTP_PUT => RequestMethod::Put.as_str_name(),
-        HTTP_DELETE => RequestMethod::Delete.as_str_name(),
-        HTTP_CONNECT => RequestMethod::Connect.as_str_name(),
-        HTTP_OPTIONS => RequestMethod::Options.as_str_name(),
-        HTTP_TRACE => RequestMethod::Trace.as_str_name(),
-        HTTP_PATCH => RequestMethod::Patch.as_str_name(),
-        _ => "not_mapped",
-    }
-}
-
-#[async_trait]
-impl AccessLogService for CustomAccessLogService {
-    async fn stream_access_logs(
-        &self,
-        request: tonic::Request<
-            tonic::Streaming<envoy::service::accesslog::v3::StreamAccessLogsMessage>,
-        >,
-    ) -> std::result::Result<
-        tonic::Response<envoy::service::accesslog::v3::StreamAccessLogsResponse>,
-        tonic::Status,
-    > {
-        let stream = request.into_inner();
-        tokio::pin!(stream);
-
-        while let Some(message) = stream.next().await {
-            let Ok(message) = message else {
-                continue;
-            };
-            println!("received access log message");
-            for log in message.log_entries.iter() {
-                let LogEntries::HttpLogs(http_access_log_entries) = log else {
-                    continue;
-                };
-                for log_entry in http_access_log_entries.log_entry.iter() {
-                    // log_entry.request.h
-                    let Some(ref request_properties) =  log_entry.request else {
-                        continue;
-                    };
-
-                    let path = &request_properties.path;
-                    let method = get_method(request_properties.request_method);
-
-                    let Some(ref response) = log_entry.response else {
-                        continue;
-                    };
-                    let response_code_details = &response.response_code_details;
-                    let response_code = response.response_code.unwrap_or(0);
-                    let response_body_bytes = response.response_body_bytes;
-                    let response_headers_bytes = response.response_headers_bytes;
-
-                    println!(
-                        "path: {}, method: {},  response_code: {}, response_body_bytes: {}, response_headers_bytes: {}",
-                        path, method, response_code, response_body_bytes, response_headers_bytes
-                    );
-                }
-            }
-        }
-
-        todo!()
-    }
-}
+use crate::{
+    envoy::service::accesslog::v3::access_log_service_server::AccessLogServiceServer,
+    log_service::CustomAccessLogService,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Hello, world!");
+    let mut prom_registry = Registry::default();
 
-    tonic::transport::Server::builder()
-        .add_service(AccessLogServiceServer::new(CustomAccessLogService {}))
-        .serve("0.0.0.0:9001".parse()?)
-        .await?;
+    let counter = Family::default();
+
+    prom_registry.register(
+        "hcm_access_logs_als",
+        "HCM access logs via ALS(grps)",
+        counter.clone(),
+    );
+
+    let prom_registry = Arc::new(prom_registry);
+
+    let grpc_server = tokio::spawn(async move {
+        // TODO: remove unwrap.
+        let grpc_server_task = tonic::transport::Server::builder()
+            .add_service(AccessLogServiceServer::new(CustomAccessLogService {
+                http_request_count_metrics: counter.clone(),
+            }))
+            .serve("0.0.0.0:9001".parse().unwrap());
+
+        grpc_server_task.await.unwrap();
+    });
+
+    let http_server = tokio::spawn(async move {
+        let router = Router::new()
+            .route("/metrics", get(handle_metrics))
+            .with_state(prom_registry);
+
+        let http_server_task =
+            axum::Server::bind(&"0.0.0.0:9002".parse().unwrap()).serve(router.into_make_service());
+        http_server_task.await.unwrap();
+    });
+
+    let x = tokio::join!(grpc_server, http_server);
 
     Ok(())
+}
+
+async fn handle_metrics(
+    State(prom_registry): State<Arc<Registry>>,
+) -> (StatusCode, HeaderMap, String) {
+    let mut body = String::new();
+
+    let _ = encode(&mut body, prom_registry.deref());
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "Content-Type",
+        "application/openmetrics-text; version=1.0.0; charset=utf-8"
+            .parse()
+            .unwrap(),
+    );
+    (StatusCode::OK, headers, body)
 }

@@ -39,3 +39,9 @@ scrape_configs:
 
     static_configs:
       - targets: ["localhost:3001"]
+
+  - job_name: "envoy_hcm_access_logs"
+    # metrics_path: "/stats/prometheus"
+
+    static_configs:
+      - targets: ["localhost:9002"]

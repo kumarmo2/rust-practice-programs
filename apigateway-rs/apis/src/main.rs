@@ -1,11 +1,9 @@
 mod api_log_layer;
 use api_log_layer::{ApiLogLayer, ApiLogServiceError};
-use axum::debug_handler;
 use axum::error_handling::HandleErrorLayer;
 use axum::extract::{Path, State};
-use axum::http::response::Parts;
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::{IntoResponse, Json, Response};
+use axum::response::Json;
 use axum::routing::{get, Router};
 use prometheus_client::encoding::text::encode;
 use prometheus_client::metrics::family::Family;
@@ -76,7 +74,7 @@ struct HomeResponse {
     message: String,
 }
 
-#[debug_handler]
+// #[debug_handler]
 async fn default_handler(Path(path): Path<String>, headers: HeaderMap) -> Json<HomeResponse> {
     println!("got request in default handler, path: {}", path);
     println!(">>>>> header starts <<<<<<<");
@@ -89,7 +87,7 @@ async fn default_handler(Path(path): Path<String>, headers: HeaderMap) -> Json<H
     })
 }
 
-#[debug_handler]
+// #[debug_handler]
 async fn home_handler() -> Json<HomeResponse> {
     println!("got request in home");
     Json(HomeResponse {

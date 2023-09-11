@@ -52,6 +52,8 @@ static_resources:
                 - name: envoy.access_loggers.http_grpc
                   typed_config:
                     "@type": type.googleapis.com/envoy.extensions.access_loggers.grpc.v3.HttpGrpcAccessLogConfig
+                    additional_request_headers_to_log:
+                      - ":authority"
                     common_config:
                       log_name: envoy_hcm_logger
                       transport_api_version: V3
