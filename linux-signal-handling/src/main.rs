@@ -1,11 +1,8 @@
 use libc::{
-    close, epoll_create, pollfd, sigaddset, sigemptyset, signalfd, sigset_t, POLLIN, POLLPRI,
-    SIGINT,
+    close, poll, pollfd, sigaddset, sigemptyset, signalfd, sigset_t, POLLIN, POLLPRI, SIGINT,
 };
 use std::mem::zeroed;
 fn main() {
-    println!("Hello, world!");
-    // let mut signals: [u32; 32] = [0; 32];
     let signal: sigset_t = unsafe { zeroed() };
     let signal = Box::into_raw(Box::new(signal));
     let result = unsafe { sigemptyset(signal) };
@@ -37,12 +34,11 @@ fn main() {
         events: POLLIN | POLLPRI,
         revents: POLLIN | POLLPRI,
     };
-    let fds = vec![poll_fd];
-    let fds = fds.as_ptr();
-
+    let mut fds = vec![poll_fd];
+    let fds = fds.as_mut_ptr();
+    println!("will wait now");
+    let poll_rs = unsafe { poll(fds, 1, -1) };
+    println!("wait over, {poll_rs}");
     unsafe { close(fd) };
     let _ = unsafe { Box::from_raw(signal) };
-
-    // let x = signals.as_mut_ptr();
-    // let x = signalfd(-1, x, flags);
 }
